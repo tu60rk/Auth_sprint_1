@@ -1,0 +1,18 @@
+version: '3'
+services:
+  auth_service:
+    ports:
+      - 8000:8000
+
+  postgres:
+    image: postgres:13
+    ports:
+      - 5432:5432
+
+  redis:
+    image: redis:7.0.10-alpine
+    ports:
+      - 6379:6379
+
+  nginx:
+    image: nginx:1.23.3

@@ -1,0 +1,27 @@
+version: '3'
+services:
+  auth_service:
+    build: .
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+
+  postgres:
+    env_file:
+      - .env
+
+  redis:
+    command: redis-server --include /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+
+  nginx:
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:z
+      - ./nginx/configs:/etc/nginx/conf.d:z
+    depends_on:
+      - auth_service
+    ports:
+      - 80:80
