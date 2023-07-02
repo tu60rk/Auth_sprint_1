@@ -1,10 +1,10 @@
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class UserCreate(BaseModel):
-    login: str
+    email: EmailStr
     password: str
     first_name: str
     last_name: str
@@ -12,8 +12,12 @@ class UserCreate(BaseModel):
 
 class UserInDB(BaseModel):
     id: UUID
-    first_name: str
-    last_name: str
+    email: str
+    password: str
 
     class Config:
         orm_mode = True
+
+
+class ForgotPassword(BaseModel):
+    email: EmailStr
