@@ -14,7 +14,7 @@ from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 from redis import asyncio as aioredis
 
-from src.api.auth import register
+from src.api.auth import register, loginout
 from src.core.config import settings
 from src.core.logger import LOGGING
 from src.db import postgres
@@ -55,7 +55,8 @@ app = FastAPI(
 
 # Подключаем роутер к серверу, указав префикс /v1/films
 # Теги указываем для удобства навигации по документации
-app.include_router(register.router, prefix='/auth/register')
+app.include_router(register.router, prefix='')
+app.include_router(loginout.router, prefix='')
 
 
 if __name__ == '__main__':
