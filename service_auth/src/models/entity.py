@@ -4,10 +4,10 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
-from alembic import op
 from werkzeug.security import generate_password_hash
 
 Base = declarative_base()
+
 
 class BaseMixin:
     id = Column(

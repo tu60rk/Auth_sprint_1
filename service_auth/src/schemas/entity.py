@@ -3,7 +3,7 @@ import re
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, validator, constr
-
+from sqlalchemy import MetaData
 
 
 class UserCreate(BaseModel):

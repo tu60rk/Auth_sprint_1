@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     db_password = os.getenv("POSTGRES_PASSWORD", None)
     db_host = os.getenv("POSTGRES_HOST", "postgres")
     db_port = int(os.getenv("POSTGRES_PORT", 5432))
-    dsl_database = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    dsl_database = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?async_fallback=True"
     # Корень проекта
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
