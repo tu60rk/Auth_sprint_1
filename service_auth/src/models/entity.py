@@ -1,13 +1,13 @@
-import token
 import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
-from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy.orm import declarative_base
+from alembic import op
+from werkzeug.security import generate_password_hash
 
-from src.db.postgres import Base
-
+Base = declarative_base()
 
 class BaseMixin:
     id = Column(
@@ -24,6 +24,7 @@ class BaseMixin:
 
 class User(Base, BaseMixin):
     __tablename__ = 'users'
+    # __table_args__ = {'extend_existing': True}
 
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
@@ -32,6 +33,8 @@ class User(Base, BaseMixin):
     verified = Column(Boolean, nullable=False, server_default='False')
     role_id = Column(UUID(as_uuid=True), ForeignKey('roles.id'))
 
+    # role_id: UUID = UUID('499be5e3-cceb-4e18-8dd6-4fbfaaa907b4')
+    # verified
     def __init__(
             self,
             first_name: str,
@@ -45,15 +48,13 @@ class User(Base, BaseMixin):
         self.email = email
         self.hash_password = generate_password_hash(password)
 
-    def check_password(self, password: str) -> bool:
-        return check_password_hash(self.hash_password, password)
-
     def __repr__(self) -> str:
         return f'<User {self.email}>'
 
 
 class Role(Base, BaseMixin):
     __tablename__ = 'roles'
+    # __table_args__ = {'extend_existing': True}
 
     name = Column(String(15), nullable=False)
     description = Column(String(255), nullable=False)
@@ -68,6 +69,7 @@ class Role(Base, BaseMixin):
 
 class AccountHistory(Base, BaseMixin):
     __tablename__ = 'account_history'
+    # __table_args__ = {'extend_existing': True}
 
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     user_agent = Column(String(50), nullable=False, server_default='default UA')  # здесь потом должна быть функция получающая useragent
@@ -75,7 +77,11 @@ class AccountHistory(Base, BaseMixin):
 
 class RefreshToken(Base, BaseMixin):
     __tablename__ = 'refresh_tokens'
+    # __table_args__ = {'extend_existing': True}
 
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     user_token = Column(String(255), nullable=False, server_default='default UT')  # здесь потом должна быть функция получающая user_token
     is_active = Column(Boolean, nullable=False, server_default='False')
+
+
+# op.execute(r"INSERT INTO roles (name, description) VALUES ('admin', 'admin')")
