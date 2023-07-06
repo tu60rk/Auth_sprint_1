@@ -55,6 +55,7 @@ class UserInDB(BaseModel):
 class LoginUserSchema(BaseModel):
     email: EmailStr
     password: str
+    set_cookie: bool = False
 
     @validator('password')
     @classmethod

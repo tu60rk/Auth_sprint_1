@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 from werkzeug.security import generate_password_hash
@@ -67,12 +67,12 @@ class AccountHistory(Base, BaseMixin):
     __tablename__ = 'account_history'
 
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
-    user_agent = Column(String(50), nullable=False, server_default='default UA')  # здесь потом должна быть функция получающая useragent
+    user_agent = Column(String(255), nullable=False, server_default='default UA')  # здесь потом должна быть функция получающая useragent
 
 
 class RefreshToken(Base, BaseMixin):
     __tablename__ = 'refresh_tokens'
 
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
-    user_token = Column(String(255), nullable=False, server_default='default UT')  # здесь потом должна быть функция получающая user_token
+    user_token = Column(String(500), nullable=False, server_default='default UT')  # здесь потом должна быть функция получающая user_token
     is_active = Column(Boolean, nullable=False, server_default='False')
