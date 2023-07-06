@@ -31,7 +31,8 @@ COPY ./alembic ./alembic
 RUN chown -R app:app /opt/app
 USER app
 
-# alembic upgrade head && 
-# alembic revision --autogenerate -m "Second migration"
-
-ENTRYPOINT alembic revision --autogenerate -m "First migration" && alembic upgrade head && gunicorn --workers 1 --worker-class uvicorn.workers.UvicornWorker src.main:app --bind $APP_HOST:$APP_PORT
+ENTRYPOINT \
+    alembic revision --autogenerate -m "first_migration" --rev-id="1" && \
+    cp ./alembic/2_create_roles.py ./alembic/versions/ && \
+    alembic upgrade head && \
+    gunicorn --workers 1 --worker-class uvicorn.workers.UvicornWorker src.main:app --bind $APP_HOST:$APP_PORT

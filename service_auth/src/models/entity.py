@@ -82,6 +82,3 @@ class RefreshToken(Base, BaseMixin):
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     user_token = Column(String(255), nullable=False, server_default='default UT')  # здесь потом должна быть функция получающая user_token
     is_active = Column(Boolean, nullable=False, server_default='False')
-
-
-# op.execute(r"INSERT INTO roles (name, description) VALUES ('admin', 'admin')")

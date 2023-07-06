@@ -18,21 +18,14 @@ from api.v1 import auth #, loginout
 from core.config import settings
 from core.logger import LOGGING
 from db import postgres
+from src.db.postgres import get_session
 import logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    # postgres_url = f'http://{settings.postgres_host}:{settings.postgres_port}'
     redis_url = f'redis://{settings.redis_host}:{settings.redis_port}'
-
-    # load services
-    # elastic.es = AsyncElasticsearch(hosts=[es_url])
-    # from models.entity import User, Role, AccountHistory, RefreshToken
-    # from db.postgres import create_database
-
-    # await create_database()
     redis = aioredis.from_url(redis_url)
     FastAPICache.init(RedisBackend(redis), prefix='fastapi-cache')
 
