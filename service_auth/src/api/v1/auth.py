@@ -1,17 +1,17 @@
+from datetime import timedelta
+from typing import Annotated
 from http import HTTPStatus
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Header, Request
 from sqlalchemy.sql import select
 from src.schemas.entity import UserCreate, UserInDB, LoginUserSchema
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.postgres import get_session
-from src.models.entity import User, Role
+from src.models.entity import User, Role, AccountHistory, RefreshToken
 from werkzeug.security import check_password_hash
 from core.oauth2 import AuthJWT
 from core.config import settings
-from datetime import timedelta
-import uuid
 
 
 router = APIRouter()
@@ -37,32 +37,23 @@ async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_se
     return user
 
 
-@router.post('/login')
+@router.post('/login', status_code=HTTPStatus.ACCEPTED)
 async def login(
     payload: LoginUserSchema,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_session),
-    Authorize: AuthJWT = Depends()
-):  
+    Authorize: AuthJWT = Depends(),
+):
 
     existing_user = await db.execute(select(User).where(User.email == payload.email))
     if not existing_user:
         raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
-
-
-    # email = form_data.username
-    # password = form_data.password
-
-    # user = await db.execute(select(User).where(User.email == email))
-    # user = user.scalar()
-
-    # if not user:
-    #     raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
-
-    # password_match = cryptoUtil.verify_password(password, user.password)
+    
+    existing_user = existing_user.scalar()
     password_match = check_password_hash(
         pwhash=existing_user.hash_password,
-        password=payload.password
+        password=settings.SAULT + existing_user.email + payload.password
     )
 
     if not password_match:
@@ -72,20 +63,38 @@ async def login(
         subject=str(existing_user.id),
         expires_time=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN),
         user_claims={
-            'role_id': existing_user.role_id
         }
     )
 
-    # Create refresh token
     refresh_token = Authorize.create_refresh_token(
         subject=str(existing_user.id), expires_time=timedelta(days=settings.REFRESH_TOKEN_EXPIRES_IN))
 
+    # save refresh token пока не работает
+    data_refresh_token = RefreshToken(
+        user_id=existing_user.id,
+        user_token=refresh_token,
+        is_active=True
+    )
+    db.add(data_refresh_token)
+    await db.commit()
+    await db.refresh(data_refresh_token)
 
-    # access_token_expires = jwtUtil.timedelta(minutes=constantUtil.ACCESS_TOKEN_EXPIRE_MINUTE)
-    # access_token = await jwtUtil.create_access_token(data={"sub": form_data.username}, expires_delta=access_token_expires)
+    # save access token
 
-    # refresh_token_expires = jwtUtil.timedelta(days=constantUtil.REFRESH_TOKEN_EXPIRE_DAYS)
-    # refresh_token = jwtUtil.create_refresh_token(data={"sub": form_data.username}, expires_delta=refresh_token_expires)
+
+    # add data to account history
+    data_header = AccountHistory(
+        user_id=existing_user.id,
+        user_agent=request.headers.get('user-agent')
+    )
+
+    db.add(data_header)
+    await db.commit()
+    await db.refresh(data_header)
+
+    if payload.set_cookie:
+        response.set_cookie('access_token', access_token, settings.ACCESS_TOKEN_EXPIRES_IN, settings.ACCESS_TOKEN_EXPIRES_IN, '/', None, False, True, 'lax')
+        response.set_cookie('refresh_token', refresh_token, settings.REFRESH_TOKEN_EXPIRES_IN, settings.REFRESH_TOKEN_EXPIRES_IN, '/', None, False, True, 'lax')
 
     return {
         "status": "success",

@@ -73,7 +73,7 @@ def upgrade():
     )
     op.create_table('account_history',
     sa.Column('user_id', sa.UUID(), nullable=True),
-    sa.Column('user_agent', sa.String(length=50), server_default='default UA', nullable=False),
+    sa.Column('user_agent', sa.String(length=255), server_default='default UA', nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
@@ -83,7 +83,7 @@ def upgrade():
     )
     op.create_table('refresh_tokens',
     sa.Column('user_id', sa.UUID(), nullable=True),
-    sa.Column('user_token', sa.String(length=255), server_default='default UT', nullable=False),
+    sa.Column('user_token', sa.String(length=500), server_default='default UT', nullable=False),
     sa.Column('is_active', sa.Boolean(), server_default='False', nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
