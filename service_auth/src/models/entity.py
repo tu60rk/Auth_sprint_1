@@ -1,12 +1,12 @@
-import token
 import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
-from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy.orm import declarative_base
+from werkzeug.security import generate_password_hash
 
-from src.db.postgres import Base
+Base = declarative_base()
 
 
 class BaseMixin:
@@ -45,9 +45,6 @@ class User(Base, BaseMixin):
         self.email = email
         self.hash_password = generate_password_hash(password)
 
-    def check_password(self, password: str) -> bool:
-        return check_password_hash(self.hash_password, password)
-
     def __repr__(self) -> str:
         return f'<User {self.email}>'
 
@@ -63,7 +60,7 @@ class Role(Base, BaseMixin):
         self.description = description
 
     def __repr__(self) -> str:
-        return f'<User {self.name}>'
+        return f'<Role {self.name}>'
 
 
 class AccountHistory(Base, BaseMixin):
