@@ -31,6 +31,7 @@ COPY ./alembic ./alembic
 RUN chown -R app:app /opt/app
 USER app
 
+
 ENTRYPOINT \
     alembic revision --autogenerate -m "first_migration" --rev-id="1" && \
     cp ./alembic/2_create_roles.py ./alembic/versions/ && \

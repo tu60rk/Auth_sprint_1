@@ -6,7 +6,7 @@ from src.schemas.entity import UserCreate, UserInDB, LoginUserSchema
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.postgres import get_session
-from src.models.entity import User
+from src.models.entity import User, Role
 from werkzeug.security import check_password_hash
 from core.oauth2 import AuthJWT
 from core.config import settings
@@ -20,19 +20,18 @@ router = APIRouter()
 @router.post('/register', response_model=UserInDB, status_code=HTTPStatus.CREATED)
 async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_session)) -> UserInDB:
     user_dto = jsonable_encoder(user_create)
-    print(user_dto)
     user_dto['password'] = settings.SAULT + user_dto['email'] + user_dto['password']
-    # добавим соли
     user = User(**user_dto)
 
     existing_user = await db.execute(select(User).where(User.email == user.email))
     if existing_user.scalar():
         raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User already registered')
 
-    user.role_id = uuid.UUID('499be5e3-cceb-4e18-8dd6-4fbfaaa907b4')
+    existing_user = await db.execute(select(Role).where(Role.name == 'user'))
+    user.role_id = existing_user.scalar().id
     user.verified = True
 
-    await db.add(user)
+    db.add(user)
     await db.commit()
     await db.refresh(user)
     return user
