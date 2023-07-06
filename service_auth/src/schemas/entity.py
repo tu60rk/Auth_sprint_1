@@ -47,8 +47,7 @@ class UserCreate(BaseModel):
 class UserInDB(BaseModel):
     id: UUID
     email: str
-    password: str
-    role_id: int
+    role_id: UUID
 
     class Config:
         orm_mode = True
