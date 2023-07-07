@@ -30,6 +30,7 @@ class User(Base, BaseMixin):
     email = Column(String(255), unique=True, nullable=False)
     hash_password = Column(String(255), nullable=False)
     verified = Column(Boolean, nullable=False, server_default='False')
+    is_active = Column(Boolean, nullable=False, server_default='True')
     role_id = Column(UUID(as_uuid=True), ForeignKey('roles.id'))
 
     def __init__(
