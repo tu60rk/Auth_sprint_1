@@ -7,31 +7,26 @@ sys.path.append(os.path.join(sys.path[0], 'src'))
 from contextlib import asynccontextmanager
 
 import uvicorn
-# from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
-from fastapi_cache import FastAPICache
-from fastapi_cache.backends.redis import RedisBackend
-from redis import asyncio as aioredis
+from redis.asyncio import Redis
 
-from api.v1 import auth #, loginout
+from api.v1 import auth
 from core.config import settings
 from core.logger import LOGGING
-from db import postgres
-from src.db.postgres import get_session
+from db import db_redis
 import logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    redis_url = f'redis://{settings.redis_host}:{settings.redis_port}'
-    redis = aioredis.from_url(redis_url)
-    FastAPICache.init(RedisBackend(redis), prefix='fastapi-cache')
-
+    db_redis.redis = Redis(
+        host=settings.redis_host,
+        port=settings.redis_port
+    )
     yield
-
-    await redis.close()
+    await db_redis.redis.close()
 
 
 app = FastAPI(
@@ -44,8 +39,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Подключаем роутер к серверу, указав префикс /v1/films
-# Теги указываем для удобства навигации по документации
 app.include_router(auth.router, prefix='/api/v1/auth')
 # app.include_router(loginout.router, prefix='auth/v1/loginout')
 
