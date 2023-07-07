@@ -54,7 +54,7 @@ async def login(
     existing_user = await db.execute(select(User).where(User.email == payload.email))
     if not existing_user:
         raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
-    
+
     existing_user = existing_user.scalar()
     password_match = check_password_hash(
         pwhash=existing_user.hash_password,
@@ -69,8 +69,8 @@ async def login(
         subject=str(existing_user.id),
         expires_time=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN),
         user_claims={
-            "role_id" : str(existing_user.role_id),
-            "email" : existing_user.email
+            "role_id": str(existing_user.role_id),
+            "email": existing_user.email
         }
     )
     # save access token
@@ -97,7 +97,7 @@ async def login(
     db.add(data_refresh_token)
     await db.commit()
     await db.refresh(data_refresh_token)
-        
+
     # add data to account history
     data_header = AccountHistory(
         user_id=existing_user.id,
@@ -137,17 +137,17 @@ async def refresh(
 
     data_token = Authorize.get_raw_jwt(refresh_token)
     current_user = data_token.get('sub')
-    
+
     existing_user = await db.execute(select(User).where(User.id == current_user))
     existing_user = existing_user.scalar()
     if not existing_user:
         raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
-    
+
     if not existing_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
-    
+
     # create access token
     access_token = Authorize.create_access_token(
         subject=str(current_user),
@@ -162,7 +162,7 @@ async def refresh(
     redis_user = await redis.get(str(existing_user.id))
     values = json.loads(redis_user) if redis_user else []
     values.append(access_token)
-    
+
     await redis.set(
         name=str(existing_user.id),
         value=json.dumps(values),
@@ -179,7 +179,7 @@ async def refresh(
     # create a refresh token
     new_refresh_token = Authorize.create_refresh_token(
         subject=str(existing_user.id), expires_time=timedelta(days=settings.REFRESH_TOKEN_EXPIRES_IN))
-    
+
     # save a refresh token
     data_refresh_token = RefreshToken(
         user_id=existing_user.id,
@@ -189,7 +189,7 @@ async def refresh(
     db.add(data_refresh_token)
     await db.commit()
     await db.refresh(data_refresh_token)
-    
+
     return {
         "status": "success",
         "detail": {
@@ -198,6 +198,32 @@ async def refresh(
         }
     }
 
+
 @router.get("/users/me", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
     return current_user
+
+
+@router.post('/logout/all', status_code=HTTPStatus.ACCEPTED)
+async def logout(
+    db: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    user_id = current_user.id
+
+    await redis.delete(str(user_id))
+
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id)
+        .values(is_active=False)
+    )
+    await db.commit()
+
+    return {
+        "status": "success",
+        "detail": {
+            "user_id": user_id,
+        }
+    }
