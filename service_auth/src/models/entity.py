@@ -67,6 +67,13 @@ class Role(Base, BaseMixin):
 class AccountHistory(Base, BaseMixin):
     __tablename__ = 'account_history'
 
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        unique=True,
+        nullable=False
+    )
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     user_agent = Column(String(255), nullable=False, server_default='default UA')  # здесь потом должна быть функция получающая useragent
 

@@ -1,18 +1,18 @@
 import json
 
-from datetime import timedelta
+from datetime import timedelta, datetime
 from http import HTTPStatus
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.sql import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from redis.asyncio import Redis
 
 from src.db.postgres import get_session
 from src.db.db_redis import get_redis
 from src.models.entity import User, Role, AccountHistory, RefreshToken
-from src.schemas.entity import UserCreate, UserInDB, LoginUserSchema
+from src.schemas.entity import UserCreate, UserInDB, LoginUserSchema, ChangePassword, LoginHistory, LoginHistoryCreate
 from core.oauth2 import AuthJWT
 from core.config import settings
 from src.utils.oauth2 import get_current_user
@@ -227,3 +227,80 @@ async def logout(
             "user_id": user_id,
         }
     }
+
+@router.put("/users/me/change-password")
+async def change_password(
+    change_password_data: ChangePassword,
+    current_user: UserInDB = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+    Authorize: AuthJWT = Depends(),
+):
+
+    existing_user = await db.execute(select(User).where(User.id == current_user.id))
+    existing_user = existing_user.scalar()
+    if not existing_user:
+        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
+
+    password_match = check_password_hash(
+        pwhash=existing_user.hash_password,
+        password=settings.SAULT + existing_user.email + change_password_data.current_password
+    )
+
+    if not password_match:
+        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail='Invalid password')
+
+    new_password = change_password_data.new_password
+    repeat_password = change_password_data.repeat_password
+
+    if new_password != repeat_password:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail='New password and repeat password do not match')
+
+    existing_user.hash_password = generate_password_hash(
+        password=settings.SAULT + existing_user.email + new_password
+    )
+    await db.commit()
+
+    await redis.delete(str(existing_user.id))
+
+    new_refresh_token = Authorize.create_refresh_token(
+        subject=str(existing_user.id), expires_time=timedelta(days=settings.REFRESH_TOKEN_EXPIRES_IN))
+
+    data_refresh_token = RefreshToken(
+        user_id=existing_user.id,
+        user_token=new_refresh_token,
+        is_active=True
+    )
+    db.add(data_refresh_token)
+    await db.commit()
+    await db.refresh(data_refresh_token)
+
+    return {
+        "status": "success",
+        "detail": {
+            "message": "Password changed successfully",
+            "refresh_token": new_refresh_token,
+        }
+    }
+
+
+@router.post('/login-history')
+async def save_login_history(
+    login_history_data: LoginHistoryCreate,
+    current_user: UserInDB = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session)
+):
+    login_history = AccountHistory(
+        user_id=current_user.id,
+        user_agent=login_history_data.user_agent,
+        created_at=datetime.utcnow()
+    )
+
+    db.add(login_history)
+    await db.commit()
+    await db.refresh(login_history)
+
+    return LoginHistory(
+        user_agent=login_history.user_agent,
+        created_at=login_history.created_at,
+    )
