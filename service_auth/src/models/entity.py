@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, ARRAY
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 from werkzeug.security import generate_password_hash
@@ -31,7 +31,6 @@ class User(Base, BaseMixin):
     hash_password = Column(String(255), nullable=False)
     verified = Column(Boolean, nullable=False, server_default='False')
     is_active = Column(Boolean, nullable=False, server_default='True')
-    role_id = Column(UUID(as_uuid=True), ForeignKey('roles.id'))
 
     def __init__(
             self,
@@ -48,6 +47,13 @@ class User(Base, BaseMixin):
 
     def __repr__(self) -> str:
         return f'<User {self.email}>'
+
+
+class UserRoles(Base, BaseMixin):
+    __tablename__ = 'usersroles'
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'))
+    role_id = Column(UUID(as_uuid=True), ForeignKey('roles.id', ondelete='CASCADE'))
 
 
 class Role(Base, BaseMixin):
@@ -67,13 +73,13 @@ class Role(Base, BaseMixin):
 class AccountHistory(Base, BaseMixin):
     __tablename__ = 'account_history'
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'))
     user_agent = Column(String(255), nullable=False, server_default='default UA')  # здесь потом должна быть функция получающая useragent
 
 
 class RefreshToken(Base, BaseMixin):
     __tablename__ = 'refresh_tokens'
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'))
     user_token = Column(String(500), nullable=False, server_default='default UT')  # здесь потом должна быть функция получающая user_token
     is_active = Column(Boolean, nullable=False, server_default='False')
