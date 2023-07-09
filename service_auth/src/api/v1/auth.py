@@ -237,16 +237,6 @@ async def refresh(
     }
 
 
-@router.get(
-    "/users/me",
-    response_model=UserInDB,
-    status_code=HTTPStatus.ACCEPTED,
-    summary="Кто я",
-)
-async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    return current_user
-
-
 @router.post(
     '/logout/all',
     status_code=HTTPStatus.ACCEPTED,

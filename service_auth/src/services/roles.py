@@ -1,5 +1,4 @@
 from functools import lru_cache
-from turtle import st
 from typing import List, Optional
 
 from fastapi import Depends
@@ -19,7 +18,6 @@ class RolesService:
         role_exist = await self.db.execute(
             select(Role).where(Role.name == name)
         )
-        #role = role_exist.scalar()
         if role_exist:
             return role_exist.scalar()
         return False
@@ -28,7 +26,6 @@ class RolesService:
         existing_user = await self.db.execute(
                 select(User).where(User.email == email)
         )
-        # existing_user = existing_user.scalar()
         if existing_user:
             return existing_user.scalar()
         return False
@@ -95,7 +92,6 @@ class RolesService:
         if not existing_user:
             return None
 
-        # check if role set to user
         user_roles = await self.db.execute(
             select(UserRoles)
             .where(
@@ -107,7 +103,6 @@ class RolesService:
         if user_roles.scalar():
             return None
 
-        # insert data
         data_insert = UserRoles(
             user_id=existing_user.id,
             role_id=role_exist.id

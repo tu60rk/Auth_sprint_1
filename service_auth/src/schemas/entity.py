@@ -1,8 +1,9 @@
 import re
 
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, validator, Field
 from pydantic.class_validators import root_validator
+from datetime import datetime
 
 
 def validate_password(cls, values: dict):
@@ -84,3 +85,20 @@ class Status(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class ShemaAccountHistory(BaseModel):
+    user_agent: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        orm_mode = True
+
+
+class ChangePassword(BaseModel):
+    current_password: str
+    password: str
+    repeat_password: str
+
+    # validators
+    _password_validator = root_validator(allow_reuse=True)(validate_password)
