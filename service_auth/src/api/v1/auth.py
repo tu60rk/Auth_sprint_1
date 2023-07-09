@@ -2,6 +2,7 @@ import json
 
 from datetime import timedelta
 from http import HTTPStatus
+
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.sql import select, update
@@ -50,6 +51,7 @@ async def login(
     redis: Redis = Depends(get_redis),
     Authorize: AuthJWT = Depends(),
 ):
+    user_agent = request.headers.get('user-agent')
 
     existing_user = await db.execute(select(User).where(User.email == payload.email))
     if not existing_user:
@@ -75,9 +77,9 @@ async def login(
     )
     # save access token
     redis_user = await redis.get(str(existing_user.id))
-    values = json.loads(redis_user) if redis_user else []
-    values.append(access_token)
-    
+    values = json.loads(redis_user) if redis_user else {}
+    values[user_agent] = access_token
+
     await redis.set(
         name=str(existing_user.id),
         value=json.dumps(values),
@@ -101,7 +103,8 @@ async def login(
     # add data to account history
     data_header = AccountHistory(
         user_id=existing_user.id,
-        user_agent=request.headers.get('user-agent')
+        user_agent=user_agent,
+        user_token=refresh_token
     )
     db.add(data_header)
     await db.commit()
@@ -201,11 +204,12 @@ async def refresh(
 
 @router.get("/users/me", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
+    print(f'\n\n\ncurrent_user: {current_user}\n\n\n')
     return current_user
 
 
 @router.post('/logout/all', status_code=HTTPStatus.ACCEPTED)
-async def logout(
+async def logout_all(
     db: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis),
     current_user: UserInDB = Depends(get_current_user)
@@ -217,6 +221,47 @@ async def logout(
     await db.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id)
+        .values(is_active=False)
+    )
+    await db.commit()
+
+    return {
+        "status": "success",
+        "detail": {
+            "user_id": user_id,
+        }
+    }
+
+
+@router.post('/logout/me', status_code=HTTPStatus.ACCEPTED)
+async def logout_me(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    user_agent = request.headers.get('user-agent')
+    user_id = current_user.id
+
+    current_user_tokens = json.loads(await redis.get(str(user_id)))
+    current_user_tokens.pop(user_agent)
+
+    user_token = await db.execute(
+        select(AccountHistory.user_token)
+        .where(AccountHistory.user_agent == user_agent, AccountHistory.user_id == user_id)
+        .order_by(AccountHistory.updated_at)
+    )  # по непонятной причине не работает .first() пришлось обращать в списко и доставать из первого элемента
+    user_token = list(user_token)[0][0]
+
+    await redis.set(
+        name=str(user_id),
+        value=json.dumps(current_user_tokens),
+        ex=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN)
+    )
+
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_token == user_token)
         .values(is_active=False)
     )
     await db.commit()

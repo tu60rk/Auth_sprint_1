@@ -69,6 +69,7 @@ class AccountHistory(Base, BaseMixin):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'))
     user_agent = Column(String(255), nullable=False, server_default='default UA')  # здесь потом должна быть функция получающая useragent
+    user_token = Column(String(500), nullable=False, server_default='default UT')
 
 
 class RefreshToken(Base, BaseMixin):

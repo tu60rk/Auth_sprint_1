@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     JWT_PRIVATE_KEY = os.getenv('JWT_PRIVATE_KEY', None)
     REFRESH_TOKEN_EXPIRES_IN: int = os.getenv('REFRESH_TOKEN_EXPIRES_IN', 15)
     ACCESS_TOKEN_EXPIRES_IN: int = os.getenv('ACCESS_TOKEN_EXPIRES_IN', 60)
-    JWT_ALGORITHM: str = os.getenv('ALGORITHM', 'HS256')
+    JWT_ALGORITHM: str = os.getenv('ALGORITHM', 'RS256')
     SAULT: str = os.getenv('SAULT', '')
 
 
