@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
 from redis.asyncio import Redis
 
-from api.v1 import auth
+from api.v1 import auth, roles
 from core.config import settings
 from core.logger import LOGGING
 from db import db_redis
@@ -40,7 +40,7 @@ app = FastAPI(
 )
 
 app.include_router(auth.router, prefix='/api/v1/auth')
-# app.include_router(loginout.router, prefix='auth/v1/loginout')
+app.include_router(roles.router, prefix='/auth/v1/roles')
 
 
 if __name__ == '__main__':

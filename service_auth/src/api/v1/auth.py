@@ -4,14 +4,14 @@ from datetime import timedelta
 from http import HTTPStatus
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.sql import select, update
+from sqlalchemy.sql import select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from werkzeug.security import check_password_hash
 from redis.asyncio import Redis
 
 from src.db.postgres import get_session
 from src.db.db_redis import get_redis
-from src.models.entity import User, Role, AccountHistory, RefreshToken
+from src.models.entity import User, Role, AccountHistory, RefreshToken, UserRoles
 from src.schemas.entity import UserCreate, UserInDB, LoginUserSchema
 from core.oauth2 import AuthJWT
 from core.config import settings
@@ -21,27 +21,42 @@ from src.utils.oauth2 import get_current_user
 router = APIRouter()
 
 
-@router.post('/register', response_model=UserInDB, status_code=HTTPStatus.CREATED)
+@router.post(
+    '/register',
+    response_model=UserInDB,
+    status_code=HTTPStatus.CREATED,
+    summary="Регистрация пользователя",
+    tags=["Авторизация"],
+)
 async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_session)) -> UserInDB:
     user_dto = jsonable_encoder(user_create)
     user_dto['password'] = settings.SAULT + user_dto['email'] + user_dto['password']
     user = User(**user_dto)
 
+    # check user in db by email
     existing_user = await db.execute(select(User).where(User.email == user.email))
     if existing_user.scalar():
         raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User already registered')
 
-    existing_user = await db.execute(select(Role).where(Role.name == 'user'))
-    user.role_id = existing_user.scalar().id
     user.verified = True
-
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    existing_role = await db.execute(select(Role).where(Role.name == 'user'))
+    role_id = existing_role.scalar().id
+
+    await db.execute(insert(UserRoles).values(user_id=user.id, role_id=role_id))
+    await db.commit()
     return user
 
 
-@router.post('/login', status_code=HTTPStatus.ACCEPTED)
+@router.post(
+    '/login',
+    status_code=HTTPStatus.ACCEPTED,
+    summary="Аутентификация пользователя",
+    tags=["Авторизация"],
+)
 async def login(
     payload: LoginUserSchema,
     request: Request,
@@ -51,6 +66,7 @@ async def login(
     Authorize: AuthJWT = Depends(),
 ):
 
+    # check user in db by email
     existing_user = await db.execute(select(User).where(User.email == payload.email))
     if not existing_user:
         raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
@@ -64,12 +80,21 @@ async def login(
     if not password_match:
         raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail='Invalid password')
 
+    user_roles = await db.execute(
+            select(Role)
+            .where(
+                UserRoles.user_id == existing_user.id
+            )
+            .join(UserRoles)
+        )
+    user_roles = [role.name for role in user_roles.scalars()]
+
     # create access token
     access_token = Authorize.create_access_token(
         subject=str(existing_user.id),
         expires_time=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN),
         user_claims={
-            "role_id": str(existing_user.role_id),
+            "roles": user_roles,
             "email": existing_user.email
         }
     )
@@ -121,7 +146,12 @@ async def login(
     }
 
 
-@router.post('/refresh')
+@router.post(
+    '/refresh',
+    status_code=HTTPStatus.ACCEPTED,
+    summary="Перевыпустить токен",
+    tags=["Авторизация"],
+)
 async def refresh(
     refresh_token: str,
     Authorize: AuthJWT = Depends(),
@@ -149,12 +179,20 @@ async def refresh(
         )
 
     # create access token
+    user_roles = await db.execute(
+        select(Role)
+        .where(
+            UserRoles.user_id == existing_user.id
+        )
+        .join(UserRoles)
+    )
+    user_roles = [role.name for role in user_roles.scalars()]
     access_token = Authorize.create_access_token(
         subject=str(current_user),
         expires_time=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN),
         user_claims={
-            "role_id" : str(existing_user.role_id),
-            "email" : existing_user.email
+            "roles": user_roles,
+            "email": existing_user.email
         }
     )
 
@@ -199,12 +237,22 @@ async def refresh(
     }
 
 
-@router.get("/users/me", response_model=UserInDB)
+@router.get(
+    "/users/me",
+    response_model=UserInDB,
+    status_code=HTTPStatus.ACCEPTED,
+    summary="Кто я",
+)
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
     return current_user
 
 
-@router.post('/logout/all', status_code=HTTPStatus.ACCEPTED)
+@router.post(
+    '/logout/all',
+    status_code=HTTPStatus.ACCEPTED,
+    summary="Выйти из всех аккаунтов",
+    tags=["Авторизация"],
+)
 async def logout(
     db: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis),
