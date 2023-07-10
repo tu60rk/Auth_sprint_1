@@ -6,6 +6,7 @@ from http import HTTPStatus
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.sql import select, update
+from sqlalchemy.sql.expression import true, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from werkzeug.security import check_password_hash
 from redis.asyncio import Redis
@@ -94,7 +95,8 @@ async def login(
     data_refresh_token = RefreshToken(
         user_id=existing_user.id,
         user_token=refresh_token,
-        is_active=True
+        is_active=true(),
+        user_agent=user_agent
     )
     db.add(data_refresh_token)
     await db.commit()
@@ -103,8 +105,7 @@ async def login(
     # add data to account history
     data_header = AccountHistory(
         user_id=existing_user.id,
-        user_agent=user_agent,
-        user_token=refresh_token
+        user_agent=user_agent
     )
     db.add(data_header)
     await db.commit()
@@ -176,7 +177,7 @@ async def refresh(
     await db.execute(
         update(RefreshToken)
         .where(RefreshToken.user_token == refresh_token)
-        .values(is_active=False)
+        .values(is_active=false())
     )
     await db.commit()
     # create a refresh token
@@ -204,7 +205,6 @@ async def refresh(
 
 @router.get("/users/me", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
-    print(f'\n\n\ncurrent_user: {current_user}\n\n\n')
     return current_user
 
 
@@ -221,7 +221,7 @@ async def logout_all(
     await db.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id)
-        .values(is_active=False)
+        .values(is_active=false())
     )
     await db.commit()
 
@@ -246,23 +246,22 @@ async def logout_me(
     current_user_tokens = json.loads(await redis.get(str(user_id)))
     current_user_tokens.pop(user_agent)
 
-    user_token = await db.execute(
-        select(AccountHistory.user_token)
-        .where(AccountHistory.user_agent == user_agent, AccountHistory.user_id == user_id)
-        .order_by(AccountHistory.updated_at)
-    )  # по непонятной причине не работает .first() пришлось обращать в списко и доставать из первого элемента
-    user_token = list(user_token)[0][0]
-
-    await redis.set(
-        name=str(user_id),
-        value=json.dumps(current_user_tokens),
-        ex=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN)
-    )
+    if len(current_user_tokens) == 0:
+        await redis.delete(str(user_id))
+    else:
+        await redis.set(
+            name=str(user_id),
+            value=json.dumps(current_user_tokens)
+        )
 
     await db.execute(
         update(RefreshToken)
-        .where(RefreshToken.user_token == user_token)
-        .values(is_active=False)
+        .where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.user_agent == user_agent,
+            RefreshToken.is_active == true()
+        )
+        .values(is_active=false())
     )
     await db.commit()
 
