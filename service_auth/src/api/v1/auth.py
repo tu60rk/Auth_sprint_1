@@ -1,6 +1,6 @@
 import json
 
-from datetime import timedelta
+from datetime import timedelta, datetime
 from http import HTTPStatus
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
@@ -23,11 +23,31 @@ from src.utils.oauth2 import get_current_user
 router = APIRouter()
 
 
+async def create_roles(db: AsyncSession):
+
+    user_role = Role(
+        name='user',
+        description='user',
+    )
+    admin_role = Role(
+        name='admin',
+        description='admin',
+    )
+
+    db.add(user_role)
+    db.add(admin_role)
+    await db.commit()
+
+
 @router.post('/register', response_model=UserInDB, status_code=HTTPStatus.CREATED)
 async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_session)) -> UserInDB:
     user_dto = jsonable_encoder(user_create)
     user_dto['password'] = settings.SAULT + user_dto['email'] + user_dto['password']
     user = User(**user_dto)
+
+    roles = await db.execute(select(Role.id))
+    if len(roles.all()) == 0:
+        await create_roles(db)
 
     existing_user = await db.execute(select(User).where(User.email == user.email))
     if existing_user.scalar():
@@ -40,6 +60,7 @@ async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_se
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
     return user
 
 
@@ -157,8 +178,8 @@ async def refresh(
         subject=str(current_user),
         expires_time=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN),
         user_claims={
-            "role_id" : str(existing_user.role_id),
-            "email" : existing_user.email
+            "role_id": str(existing_user.role_id),
+            "email": existing_user.email
         }
     )
 
