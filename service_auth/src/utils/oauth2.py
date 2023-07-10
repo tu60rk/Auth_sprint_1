@@ -41,7 +41,7 @@ async def get_current_user(
         )
     # нужно проверить в redis наличие токена по юзеру
     user_tokens = json.loads(await redis.get(data_token.get('sub')))
-    if token not in user_tokens:
+    if token not in user_tokens.values():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",

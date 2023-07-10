@@ -34,6 +34,5 @@ USER app
 
 ENTRYPOINT \
     alembic revision --autogenerate -m "first_migration" --rev-id="1" && \
-    cp ./alembic/2_create_roles.py ./alembic/versions/ && \
     alembic upgrade head && \
     gunicorn --workers 1 --worker-class uvicorn.workers.UvicornWorker src.main:app --bind $APP_HOST:$APP_PORT

@@ -1,10 +1,13 @@
 import json
 
-from datetime import timedelta
+from datetime import timedelta, datetime
 from http import HTTPStatus
+
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.sql import select, update, insert
+
+from sqlalchemy.sql import select, update
+from sqlalchemy.sql.expression import true, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from werkzeug.security import check_password_hash
 from redis.asyncio import Redis
@@ -21,6 +24,23 @@ from src.utils.oauth2 import get_current_user
 router = APIRouter()
 
 
+
+async def create_roles(db: AsyncSession):
+
+    user_role = Role(
+        name='user',
+        description='user',
+    )
+    admin_role = Role(
+        name='admin',
+        description='admin',
+    )
+
+    db.add(user_role)
+    db.add(admin_role)
+    await db.commit()
+
+
 @router.post(
     '/register',
     response_model=UserInDB,
@@ -33,7 +53,10 @@ async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_se
     user_dto['password'] = settings.SAULT + user_dto['email'] + user_dto['password']
     user = User(**user_dto)
 
-    # check user in db by email
+    roles = await db.execute(select(Role.id))
+    if len(roles.all()) == 0:
+        await create_roles(db)
+
     existing_user = await db.execute(select(User).where(User.email == user.email))
     if existing_user.scalar():
         raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User already registered')
@@ -42,12 +65,6 @@ async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_se
     db.add(user)
     await db.commit()
     await db.refresh(user)
-
-    existing_role = await db.execute(select(Role).where(Role.name == 'user'))
-    role_id = existing_role.scalar().id
-
-    await db.execute(insert(UserRoles).values(user_id=user.id, role_id=role_id))
-    await db.commit()
     return user
 
 
@@ -65,6 +82,7 @@ async def login(
     redis: Redis = Depends(get_redis),
     Authorize: AuthJWT = Depends(),
 ):
+    user_agent = request.headers.get('user-agent')
 
     # check user in db by email
     existing_user = await db.execute(select(User).where(User.email == payload.email))
@@ -100,9 +118,9 @@ async def login(
     )
     # save access token
     redis_user = await redis.get(str(existing_user.id))
-    values = json.loads(redis_user) if redis_user else []
-    values.append(access_token)
-    
+    values = json.loads(redis_user) if redis_user else {}
+    values[user_agent] = access_token
+
     await redis.set(
         name=str(existing_user.id),
         value=json.dumps(values),
@@ -117,7 +135,8 @@ async def login(
     data_refresh_token = RefreshToken(
         user_id=existing_user.id,
         user_token=refresh_token,
-        is_active=True
+        is_active=true(),
+        user_agent=user_agent
     )
     db.add(data_refresh_token)
     await db.commit()
@@ -126,7 +145,7 @@ async def login(
     # add data to account history
     data_header = AccountHistory(
         user_id=existing_user.id,
-        user_agent=request.headers.get('user-agent')
+        user_agent=user_agent
     )
     db.add(data_header)
     await db.commit()
@@ -211,7 +230,7 @@ async def refresh(
     await db.execute(
         update(RefreshToken)
         .where(RefreshToken.user_token == refresh_token)
-        .values(is_active=False)
+        .values(is_active=false())
     )
     await db.commit()
     # create a refresh token
@@ -237,13 +256,14 @@ async def refresh(
     }
 
 
+
 @router.post(
     '/logout/all',
     status_code=HTTPStatus.ACCEPTED,
     summary="Выйти из всех аккаунтов",
     tags=["Авторизация"],
 )
-async def logout(
+async def logout_all(
     db: AsyncSession = Depends(get_session),
     redis: Redis = Depends(get_redis),
     current_user: UserInDB = Depends(get_current_user)
@@ -255,7 +275,47 @@ async def logout(
     await db.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id)
-        .values(is_active=False)
+        .values(is_active=false())
+    )
+    await db.commit()
+
+    return {
+        "status": "success",
+        "detail": {
+            "user_id": user_id,
+        }
+    }
+
+
+@router.post('/logout/me', status_code=HTTPStatus.ACCEPTED)
+async def logout_me(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    redis: Redis = Depends(get_redis),
+    current_user: UserInDB = Depends(get_current_user)
+):
+    user_agent = request.headers.get('user-agent')
+    user_id = current_user.id
+
+    current_user_tokens = json.loads(await redis.get(str(user_id)))
+    current_user_tokens.pop(user_agent)
+
+    if len(current_user_tokens) == 0:
+        await redis.delete(str(user_id))
+    else:
+        await redis.set(
+            name=str(user_id),
+            value=json.dumps(current_user_tokens)
+        )
+
+    await db.execute(
+        update(RefreshToken)
+        .where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.user_agent == user_agent,
+            RefreshToken.is_active == true()
+        )
+        .values(is_active=false())
     )
     await db.commit()
 
