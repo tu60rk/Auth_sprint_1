@@ -23,7 +23,14 @@ async def get_current_user(
     token = credentials.credentials
 
     # проверка токена
-    Authorize._verifying_token(token)
+    try:
+        Authorize._verifying_token(token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access token is expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     data_token = Authorize.get_raw_jwt(token)
     if token and data_token['type'] != 'access':
@@ -40,9 +47,11 @@ async def get_current_user(
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     # проверить usera в бд
-    existing_user = await db.execute(select(User).where(User.email == data_token.get('email')))
+    existing_user = await db.execute(
+        select(User).where(User.email == data_token.get('email'))
+    )
     existing_user = existing_user.scalar()
     if not existing_user:
         raise HTTPException(
