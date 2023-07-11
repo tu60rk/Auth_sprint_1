@@ -80,3 +80,14 @@ async def change_password(
         )
 
     return result
+
+
+@router.put(
+    "/email",
+    response_model=Status,
+    status_code=HTTPStatus.ACCEPTED,
+    summary="смена email",
+    tags=['Пользователь']
+)
+async def change_email():
+    pass

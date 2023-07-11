@@ -35,7 +35,7 @@ class RedisService:
         )
 
     async def get(self, user_id: str) -> Optional[dict]:
-        return json.loads(await redis.get(str(user_id)))
+        return json.loads(await self.redis.get(str(user_id)))
 
     async def set(self, name: str, value: str, ex: timedelta = None):
         params = {
@@ -43,7 +43,7 @@ class RedisService:
             "value": value,
         }
         params.update({"ex": ex}) if ex else ''
-        await redis.set(**params)
+        await self.redis.set(**params)
 
     async def delete(self, user_id: str):
         await self.redis.delete(user_id)

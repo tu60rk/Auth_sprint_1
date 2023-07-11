@@ -6,7 +6,7 @@ from http import HTTPStatus
 from fastapi import Depends, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import update
+from sqlalchemy.sql import update, select
 from sqlalchemy.sql.expression import true, false
 from redis.asyncio import Redis
 from werkzeug.security import check_password_hash
@@ -77,15 +77,16 @@ class AuthService:
     async def __create_roles(self) -> None:
         user_role = Role(
             name='user',
-            description='user',
+            description='user'
         )
         admin_role = Role(
             name='admin',
-            description='admin',
+            description='admin'
         )
 
-        await self.db_service(user_role)
-        await self.db_service(admin_role)
+        await self.db_service.insert_data(user_role)
+        await self.db_service.insert_data(admin_role)
+
 
     async def __check_user_exist_active(
         self,
@@ -118,6 +119,7 @@ class AuthService:
                 what_select=Role.id,
                 where_select=[Role.name, 'user']
             )
+
             if len(roles) == 0:
                 await self.__create_roles()
 
@@ -279,7 +281,7 @@ class AuthService:
     async def logout_me(self, user_id: str, user_agent: str) -> Status:
 
         try:
-            current_user_tokens = await self.redis_service.get(user_id=user_id)
+            current_user_tokens = await self.redis_service.get(user_id)
             current_user_tokens.pop(user_agent)
 
             if len(current_user_tokens) == 0:
@@ -290,16 +292,16 @@ class AuthService:
                     value=json.dumps(current_user_tokens),
                 )
 
-            await self.db_service.db.execute(
-                update(RefreshToken)
-                .where(
-                    RefreshToken.user_id == user_id,
-                    RefreshToken.user_agent == user_agent,
-                    RefreshToken.is_active == true()
-                )
-                .values(is_active=false())
+            await self.db_service.update_token(
+                what_update=RefreshToken,
+                where_update={
+                    'user_id': user_id,
+                    'user_agent': user_agent,
+                    'is_active': true()
+                },
+                values_update={'is_active': false()}
             )
-            await self.db_service.db.commit()
+
         except Exception:
             return None
 

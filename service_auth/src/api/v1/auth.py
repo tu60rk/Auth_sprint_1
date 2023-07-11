@@ -152,7 +152,7 @@ async def logout_me(
 
     result = await service_auth.logout_me(
         user_agent=user_agent,
-        user_id=user_id,
+        user_id=user_id
     )
     if not result:
         raise HTTPException(

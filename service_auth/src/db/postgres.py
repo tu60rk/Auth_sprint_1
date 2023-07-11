@@ -2,7 +2,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.sql import select, update, insert, delete
 
-from src.models.entity import Role, UserRoles
+from src.models.entity import RefreshToken, Role, UserRoles
 from src.core.config import settings
 
 # Создаём движок
@@ -111,6 +111,25 @@ class DbService:
             where_update=where_update
         )
         await self.db.execute(sql)
+        await self.db.commit()
+
+    async def update_token(
+        self,
+        what_update,
+        values_update: dict,
+        where_update: dict = None,
+    ):
+
+        await self.db.execute(
+            update(what_update)
+            .where(
+                RefreshToken.user_agent == where_update['user_agent'],
+                RefreshToken.user_id == where_update['user_id'],
+                RefreshToken.is_active == where_update['is_active']
+            )
+            .values(values_update)
+        )
+
         await self.db.commit()
 
     async def simple_insert(
