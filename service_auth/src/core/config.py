@@ -1,12 +1,9 @@
 import os
 from logging import config as logging_config
 from pydantic import BaseSettings
-# from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
 
 from src.core.logger import LOGGING
 
-load_dotenv('/Users/romanromanov/Documents/GitHub/Async_API_sprint_team/AUTH.2.0/service_auth/.env')
 
 class Settings(BaseSettings):
     # Название проекта. Используется в Swagger-документации
