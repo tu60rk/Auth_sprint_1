@@ -22,6 +22,18 @@ def validate_password(cls, values: dict):
     return values
 
 
+def validate_email(cls, values: dict):
+    email = values.get('email', None)
+    if not email:
+        raise ValueError('The email is None')
+    regex = re.compile(
+        r'([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+'
+    )
+    if not re.fullmatch(regex, email):
+        raise ValueError('The email must be close to "example@mail.com"')
+    return values
+
+
 class UserCreate(BaseModel):
     first_name: str
     last_name: str
@@ -30,6 +42,7 @@ class UserCreate(BaseModel):
 
     # validators
     _password_validator = root_validator(allow_reuse=True)(validate_password)
+    _email_validator = root_validator(allow_reuse=True)(validate_email)
 
     @validator('first_name', each_item=False)
     @classmethod
@@ -67,6 +80,7 @@ class LoginUserSchema(BaseModel):
     set_cookie: bool = False
 
     _password_validator = root_validator(allow_reuse=True)(validate_password)
+    _email_validator = root_validator(allow_reuse=True)(validate_email)
 
     class Config:
         orm_mode = True
@@ -101,6 +115,17 @@ class ChangePassword(BaseModel):
     repeat_password: str
 
     # validators
+    _password_validator = root_validator(allow_reuse=True)(validate_password)
+
+    class Config:
+        orm_mode = True
+
+
+class ChangeEmail(BaseModel):
+    password: str
+    email: EmailStr
+
+    _email_validator = root_validator(allow_reuse=True)(validate_email)
     _password_validator = root_validator(allow_reuse=True)(validate_password)
 
     class Config:

@@ -6,7 +6,6 @@ from http import HTTPStatus
 from fastapi import Depends, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import update, select
 from sqlalchemy.sql.expression import true, false
 from redis.asyncio import Redis
 from werkzeug.security import check_password_hash
@@ -87,7 +86,6 @@ class AuthService:
         await self.db_service.insert_data(user_role)
         await self.db_service.insert_data(admin_role)
 
-
     async def __check_user_exist_active(
         self,
         by: str,
@@ -109,7 +107,6 @@ class AuthService:
         return existing_user[0]
 
     async def create_user(self, user_info: UserInDB) -> Optional[UserInDB]:
-
         try:
             user_dto = jsonable_encoder(user_info)
             user_dto['password'] = settings.SAULT + user_dto['email'] + user_dto['password']
@@ -122,6 +119,10 @@ class AuthService:
 
             if len(roles) == 0:
                 await self.__create_roles()
+                roles = await self.db_service.simple_select(
+                    what_select=Role.id,
+                    where_select=[Role.name, 'user']
+                )
 
             existing_user = await self.db_service.simple_select(
                 what_select=User,
@@ -136,7 +137,7 @@ class AuthService:
                 what_insert=UserRoles,
                 values_insert={
                     'user_id': user.id,
-                    'role_id': roles.id
+                    'role_id': roles[0]
                 }
             )
             return user

@@ -4,7 +4,7 @@ from typing import List
 
 from src.utils.oauth2 import get_current_user
 from src.schemas.entity import (
-    ShemaAccountHistory, Status, UserInDB, ChangePassword
+    ShemaAccountHistory, Status, UserInDB, ChangePassword, ChangeEmail
 )
 from src.services.users import user_service, UserService
 
@@ -86,8 +86,39 @@ async def change_password(
     "/email",
     response_model=Status,
     status_code=HTTPStatus.ACCEPTED,
-    summary="смена email",
+    summary="Cмена email",
     tags=['Пользователь']
 )
-async def change_email():
-    pass
+async def change_email(
+    params: ChangeEmail,
+    current_user: UserInDB = Depends(get_current_user),
+    service_user: UserService = Depends(user_service),
+):
+    if params.email == current_user.email:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail='New email must be not equal past email'
+        )
+    result = await service_user.change_email(
+        current_password=params.password,
+        new_email=params.email,
+        user_info=current_user
+    )
+    if result == HTTPStatus.CONFLICT:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail="Email already exist"
+        )
+
+    if result == HTTPStatus.UNAUTHORIZED:
+        raise HTTPException(
+            status_code=HTTPStatus.UNAUTHORIZED,
+            detail='Invalid password'
+        )
+
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't change email"
+        )
+    return result

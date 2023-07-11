@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 
 from api.v1 import auth, roles, users
@@ -16,6 +17,13 @@ from core.config import settings
 from core.logger import LOGGING
 from db import db_redis
 import logging
+
+
+
+origins = [
+    "http://localhost",
+    "http://localhost:8080",
+]
 
 
 @asynccontextmanager
@@ -37,6 +45,14 @@ app = FastAPI(
     openapi_url='/api/v1/openapi.json',
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth.router, prefix='/api/v1/auth')

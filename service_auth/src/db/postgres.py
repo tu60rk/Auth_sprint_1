@@ -162,4 +162,4 @@ class DbService:
             where_select=[UserRoles.user_id, user_id],
             join_with=UserRoles
         )
-        return [role.name for role in user_roles]
+        return [role for role in user_roles]
