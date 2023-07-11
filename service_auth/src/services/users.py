@@ -69,6 +69,44 @@ class UserService:
             return None
         # add condition when user want to out of all his gadgets.
 
+    async def change_email(
+        self,
+        current_password: str,
+        new_email: str,
+        user_info: UserInDB
+    ) -> Status:
+        try:
+
+            # check new_email in db
+            check_email = await self.db_service.simple_select(
+                what_select=User,
+                where_select=[User.email, new_email]
+            )
+            if len(check_email) > 0:
+                return HTTPStatus.CONFLICT
+
+            user = await self.db_service.simple_select(
+                what_select=User,
+                where_select=[User.email, user_info.email]
+            )
+            user = user[0]
+
+            password_match = check_password_hash(
+                pwhash=user.hash_password,
+                password=settings.SAULT + user_info.email + current_password
+            )
+            if not password_match:
+                return HTTPStatus.UNAUTHORIZED
+
+            user.email = new_email
+            user.hash_password = generate_password_hash(
+                password=settings.SAULT + new_email + current_password
+            )
+            await self.db_service.db.commit()
+            return Status(status='success')
+        except Exception:
+            return None
+
 
 @lru_cache()
 def user_service(
