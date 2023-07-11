@@ -102,3 +102,14 @@ class ChangePassword(BaseModel):
 
     # validators
     _password_validator = root_validator(allow_reuse=True)(validate_password)
+
+    class Config:
+        orm_mode = True
+
+
+class Tokens(BaseModel):
+    access_token: str
+    refresh_token: str
+
+    class Config:
+        orm_mode = True

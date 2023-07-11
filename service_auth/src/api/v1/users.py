@@ -1,13 +1,14 @@
 from http import HTTPStatus
-from fastapi import APIRouter, Depends, HTTPException, Query
-from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List
 
 from src.utils.oauth2 import get_current_user
-from src.schemas.entity import ShemaAccountHistory, Status, UserInDB, ChangePassword
+from src.schemas.entity import (
+    ShemaAccountHistory, Status, UserInDB, ChangePassword
+)
 from src.services.users import user_service, UserService
 
 router = APIRouter()
-
 
 
 @router.get(
@@ -32,7 +33,13 @@ async def get_account_history(
     current_user: UserInDB = Depends(get_current_user),
     service_user: UserService = Depends(user_service)
 ) -> List[ShemaAccountHistory]:
-    return await service_user.get_account_history(current_user.id)
+    result = await service_user.get_account_history(current_user.id)
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't get account history"
+        )
+    return result
 
 
 @router.put(
@@ -60,10 +67,16 @@ async def change_password(
         user_info=current_user
     )
 
-    if not result:
+    if result == HTTPStatus.UNAUTHORIZED:
         raise HTTPException(
             status_code=HTTPStatus.UNAUTHORIZED,
             detail='Invalid password'
+        )
+
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't change password"
         )
 
     return result
