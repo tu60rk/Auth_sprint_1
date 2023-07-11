@@ -1,5 +1,5 @@
 from http import HTTPStatus
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 
 from src.utils.oauth2 import get_current_user
@@ -25,10 +25,16 @@ async def create_role(
         name=role.name,
         description=role.description
     )
-    if not role:
+    if role == HTTPStatus.BAD_REQUEST:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="This role exists"
+        )
+
+    if not role:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't create role"
         )
     return role
 
@@ -52,10 +58,15 @@ async def change_role(
         new_name=new_name,
         new_description=new_description
     )
-    if not role:
+    if role == HTTPStatus.BAD_REQUEST:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="This role doesn't exist"
+        )
+    if not role:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't change rolw"
         )
     return role
 
@@ -71,7 +82,13 @@ async def get_roles(
     current_user: UserInDB = Depends(get_current_user),
     role_service: RolesService = Depends(role_services)
 ):
-    return await role_service.get_roles()
+    result = await role_service.get_roles()
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't change rolw"
+        )
+    return result
 
 
 @router.delete(
@@ -89,10 +106,15 @@ async def delete_role(
     role = await role_service.delete_role(
         name=name
     )
-    if not role:
+    if role == HTTPStatus.BAD_REQUEST:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="This role doesn't exist"
+        )
+    if not role:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't delete role"
         )
     return role
 
@@ -114,9 +136,20 @@ async def set_role_to_user(
         email=email,
         role_name=role_name
     )
-    if not role:
+    if role == HTTPStatus.BAD_REQUEST:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
+            detail="Role is not exist"
+        )
+    if role == HTTPStatus.CONFLICT:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail="User is not exist"
+        )
+
+    if not role:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
             detail="Can't set a new role"
         )
     return role
@@ -139,9 +172,19 @@ async def delete_role_from_user(
         email=email,
         role_name=role_name
     )
-    if not role:
+    if role == HTTPStatus.BAD_REQUEST:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
+            detail="Role is not exist"
+        )
+    if role == HTTPStatus.CONFLICT:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail="User is not exist"
+        )
+    if not role:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
             detail="Can't delete a role for user"
         )
     return role

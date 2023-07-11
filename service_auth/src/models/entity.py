@@ -82,6 +82,6 @@ class RefreshToken(Base, BaseMixin):
     __tablename__ = 'refresh_tokens'
 
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'))
-    user_token = Column(String(500), nullable=False, server_default='default UT')  # здесь потом должна быть функция получающая user_token
+    user_token = Column(String(600), nullable=False, server_default='default UT')  # здесь потом должна быть функция получающая user_token
     is_active = Column(Boolean, nullable=False, server_default='False')
     user_agent = Column(String(255), nullable=False, server_default='default UA')  # здесь потом должна быть функция получающая useragent

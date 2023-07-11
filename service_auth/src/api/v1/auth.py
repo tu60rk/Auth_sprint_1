@@ -1,44 +1,14 @@
-import json
-
-from datetime import timedelta, datetime
 from http import HTTPStatus
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
-from fastapi.encoders import jsonable_encoder
-
-from sqlalchemy.sql import select, update
-from sqlalchemy.sql.expression import true, false
-from sqlalchemy.ext.asyncio import AsyncSession
-from werkzeug.security import check_password_hash
-from redis.asyncio import Redis
-
-from src.db.postgres import get_session
-from src.db.db_redis import get_redis
-from src.models.entity import User, Role, AccountHistory, RefreshToken, UserRoles
-from src.schemas.entity import UserCreate, UserInDB, LoginUserSchema
-from core.oauth2 import AuthJWT
-from core.config import settings
+from src.schemas.entity import (
+    UserCreate, UserInDB, LoginUserSchema, Tokens, Status
+)
+from src.services.auth import AuthService, auth_service
 from src.utils.oauth2 import get_current_user
 
 
 router = APIRouter()
-
-
-
-async def create_roles(db: AsyncSession):
-
-    user_role = Role(
-        name='user',
-        description='user',
-    )
-    admin_role = Role(
-        name='admin',
-        description='admin',
-    )
-
-    db.add(user_role)
-    db.add(admin_role)
-    await db.commit()
 
 
 @router.post(
@@ -48,28 +18,31 @@ async def create_roles(db: AsyncSession):
     summary="Регистрация пользователя",
     tags=["Авторизация"],
 )
-async def create_user(user_create: UserCreate, db: AsyncSession = Depends(get_session)) -> UserInDB:
-    user_dto = jsonable_encoder(user_create)
-    user_dto['password'] = settings.SAULT + user_dto['email'] + user_dto['password']
-    user = User(**user_dto)
+async def create_user(
+    user_create: UserCreate,
+    service_auth: AuthService = Depends(auth_service)
+) -> UserInDB:
 
-    roles = await db.execute(select(Role.id))
-    if len(roles.all()) == 0:
-        await create_roles(db)
+    result = await service_auth.create_user(
+        user_info=user_create
+    )
 
-    existing_user = await db.execute(select(User).where(User.email == user.email))
-    if existing_user.scalar():
-        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User already registered')
-
-    user.verified = True
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
+    if result == HTTPStatus.CONFLICT:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail='User already registered'
+        )
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't register user"
+        )
+    return result
 
 
 @router.post(
     '/login',
+    response_model=Tokens,
     status_code=HTTPStatus.ACCEPTED,
     summary="Аутентификация пользователя",
     tags=["Авторизация"],
@@ -78,250 +51,111 @@ async def login(
     payload: LoginUserSchema,
     request: Request,
     response: Response,
-    db: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
-    Authorize: AuthJWT = Depends(),
+    service_auth: AuthService = Depends(auth_service)
 ):
-    user_agent = request.headers.get('user-agent')
-
-    # check user in db by email
-    existing_user = await db.execute(select(User).where(User.email == payload.email))
-    if not existing_user:
-        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
-
-    existing_user = existing_user.scalar()
-    password_match = check_password_hash(
-        pwhash=existing_user.hash_password,
-        password=settings.SAULT + existing_user.email + payload.password
+    result = await service_auth.login(
+        user_agent=request.headers.get('user-agent'),
+        email=payload.email,
+        passwd=payload.password,
+        set_cookie=payload.set_cookie,
+        response=response
     )
 
-    if not password_match:
-        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail='Invalid password')
-
-    user_roles = await db.execute(
-            select(Role)
-            .where(
-                UserRoles.user_id == existing_user.id
-            )
-            .join(UserRoles)
+    if result == HTTPStatus.CONFLICT:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail='User not found'
         )
-    user_roles = [role.name for role in user_roles.scalars()]
 
-    # create access token
-    access_token = Authorize.create_access_token(
-        subject=str(existing_user.id),
-        expires_time=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN),
-        user_claims={
-            "roles": user_roles,
-            "email": existing_user.email
-        }
-    )
-    # save access token
-    redis_user = await redis.get(str(existing_user.id))
-    values = json.loads(redis_user) if redis_user else {}
-    values[user_agent] = access_token
-
-    await redis.set(
-        name=str(existing_user.id),
-        value=json.dumps(values),
-        ex=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN)
-    )
-
-    # create refresh token
-    refresh_token = Authorize.create_refresh_token(
-        subject=str(existing_user.id), expires_time=timedelta(days=settings.REFRESH_TOKEN_EXPIRES_IN))
-
-    # save refresh token
-    data_refresh_token = RefreshToken(
-        user_id=existing_user.id,
-        user_token=refresh_token,
-        is_active=true(),
-        user_agent=user_agent
-    )
-    db.add(data_refresh_token)
-    await db.commit()
-    await db.refresh(data_refresh_token)
-
-    # add data to account history
-    data_header = AccountHistory(
-        user_id=existing_user.id,
-        user_agent=user_agent
-    )
-    db.add(data_header)
-    await db.commit()
-    await db.refresh(data_header)
-
-    # set cookie
-    if payload.set_cookie:
-        response.set_cookie('access_token', access_token, settings.ACCESS_TOKEN_EXPIRES_IN, settings.ACCESS_TOKEN_EXPIRES_IN, '/', None, False, True, 'lax')
-        response.set_cookie('refresh_token', refresh_token, settings.REFRESH_TOKEN_EXPIRES_IN, settings.REFRESH_TOKEN_EXPIRES_IN, '/', None, False, True, 'lax')
-
-    return {
-        "status": "success",
-        "detail": {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-        }
-    }
+    if result == HTTPStatus.UNAUTHORIZED:
+        raise HTTPException(
+            status_code=HTTPStatus.UNAUTHORIZED,
+            detail='Invalid password'
+        )
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY,
+            detail="Can't login"
+        )
+    return result
 
 
 @router.post(
     '/refresh',
+    response_model=Tokens,
     status_code=HTTPStatus.ACCEPTED,
     summary="Перевыпустить токен",
     tags=["Авторизация"],
 )
 async def refresh(
     refresh_token: str,
-    Authorize: AuthJWT = Depends(),
-    db: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
-):
-    # проверка токена
-    Authorize._verify_jwt_in_request(
-        token=refresh_token,
-        type_token='refresh',
-        token_from='headers'
+    request: Request,
+    service_auth: AuthService = Depends(auth_service)
+) -> Tokens:
+
+    result = await service_auth.refresh(
+        refresh_token=refresh_token,
+        user_agent=request.headers.get('user-agent')
     )
-
-    data_token = Authorize.get_raw_jwt(refresh_token)
-    current_user = data_token.get('sub')
-
-    existing_user = await db.execute(select(User).where(User.id == current_user))
-    existing_user = existing_user.scalar()
-    if not existing_user:
-        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail='User not found')
-
-    if not existing_user.is_active:
+    if not result:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
+            status_code=HTTPStatus.UNAUTHORIZED,
+            detail='Refresh token is invalid'
         )
 
-    # create access token
-    user_roles = await db.execute(
-        select(Role)
-        .where(
-            UserRoles.user_id == existing_user.id
+    if result == HTTPStatus.CONFLICT:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT, detail='User not found'
         )
-        .join(UserRoles)
-    )
-    user_roles = [role.name for role in user_roles.scalars()]
-    access_token = Authorize.create_access_token(
-        subject=str(current_user),
-        expires_time=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN),
-        user_claims={
-            "roles": user_roles,
-            "email": existing_user.email
-        }
-    )
 
-    # save access token - это не совсем верно. Нужно пересмотреть логику. Нам нужно старый токен из этого списка удалить. Как вариант хранить user_agent как ключ, а его значение токен
-    redis_user = await redis.get(str(existing_user.id))
-    values = json.loads(redis_user) if redis_user else []
-    values.append(access_token)
-
-    await redis.set(
-        name=str(existing_user.id),
-        value=json.dumps(values),
-        ex=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES_IN)
-    )
-
-    # change status for refresh token
-    await db.execute(
-        update(RefreshToken)
-        .where(RefreshToken.user_token == refresh_token)
-        .values(is_active=false())
-    )
-    await db.commit()
-    # create a refresh token
-    new_refresh_token = Authorize.create_refresh_token(
-        subject=str(existing_user.id), expires_time=timedelta(days=settings.REFRESH_TOKEN_EXPIRES_IN))
-
-    # save a refresh token
-    data_refresh_token = RefreshToken(
-        user_id=existing_user.id,
-        user_token=new_refresh_token,
-        is_active=True
-    )
-    db.add(data_refresh_token)
-    await db.commit()
-    await db.refresh(data_refresh_token)
-
-    return {
-        "status": "success",
-        "detail": {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-        }
-    }
-
+    if result == HTTPStatus.BAD_REQUEST:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST, detail="Inactive user"
+        )
+    return result
 
 
 @router.post(
     '/logout/all',
+    response_model=Status,
     status_code=HTTPStatus.ACCEPTED,
     summary="Выйти из всех аккаунтов",
     tags=["Авторизация"],
 )
 async def logout_all(
-    db: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
-    current_user: UserInDB = Depends(get_current_user)
+    current_user: UserInDB = Depends(get_current_user),
+    service_auth: AuthService = Depends(auth_service)
 ):
-    user_id = current_user.id
-
-    await redis.delete(str(user_id))
-
-    await db.execute(
-        update(RefreshToken)
-        .where(RefreshToken.user_id == user_id)
-        .values(is_active=false())
-    )
-    await db.commit()
-
-    return {
-        "status": "success",
-        "detail": {
-            "user_id": user_id,
-        }
-    }
+    user_id = str(current_user.id)
+    result = await service_auth.logout_all(user_id=user_id)
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY, detail="Can't logout"
+        )
+    return result
 
 
-@router.post('/logout/me', status_code=HTTPStatus.ACCEPTED)
+@router.post(
+    '/logout/me',
+    response_model=Status,
+    status_code=HTTPStatus.ACCEPTED,
+    summary="Выйти из текущего аккаунта",
+    tags=["Авторизация"],
+)
 async def logout_me(
     request: Request,
-    db: AsyncSession = Depends(get_session),
-    redis: Redis = Depends(get_redis),
-    current_user: UserInDB = Depends(get_current_user)
+    current_user: UserInDB = Depends(get_current_user),
+    service_auth: AuthService = Depends(auth_service)
 ):
     user_agent = request.headers.get('user-agent')
-    user_id = current_user.id
+    user_id = str(current_user.id)
 
-    current_user_tokens = json.loads(await redis.get(str(user_id)))
-    current_user_tokens.pop(user_agent)
-
-    if len(current_user_tokens) == 0:
-        await redis.delete(str(user_id))
-    else:
-        await redis.set(
-            name=str(user_id),
-            value=json.dumps(current_user_tokens)
-        )
-
-    await db.execute(
-        update(RefreshToken)
-        .where(
-            RefreshToken.user_id == user_id,
-            RefreshToken.user_agent == user_agent,
-            RefreshToken.is_active == true()
-        )
-        .values(is_active=false())
+    result = await service_auth.logout_me(
+        user_agent=user_agent,
+        user_id=user_id,
     )
-    await db.commit()
-
-    return {
-        "status": "success",
-        "detail": {
-            "user_id": user_id,
-        }
-    }
+    if not result:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_GATEWAY, detail="Can't logout"
+        )
+    return result
