@@ -24,7 +24,7 @@ async def get_current_user(
 
     # проверка токена
     try:
-        Authorize._verifying_token(token)
+        await Authorize._verifying_token(token)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -32,7 +32,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    data_token = Authorize.get_raw_jwt(token)
+    data_token = await Authorize.get_raw_jwt(token)
     if token and data_token['type'] != 'access':
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
