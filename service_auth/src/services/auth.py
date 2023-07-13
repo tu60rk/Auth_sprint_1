@@ -32,7 +32,7 @@ class AuthService:
         self.Authorize = Authorize
         self.db_service = db_service
 
-    def __create_tokens(
+    async def __create_tokens(
         self,
         subject: str,
         is_ex: bool = True,
@@ -65,10 +65,10 @@ class AuthService:
                 }
             )
 
-        access_token = self.Authorize.create_access_token(
+        access_token = await self.Authorize.create_access_token(
             **params_for_access
         )
-        refresh_token = self.Authorize.create_refresh_token(
+        refresh_token = await self.Authorize.create_refresh_token(
             **params_for_access
         )
         return Tokens(access_token=access_token, refresh_token=refresh_token)
@@ -174,7 +174,7 @@ class AuthService:
             )
 
             # create access and refresh tokens
-            tokens = self.__create_tokens(
+            tokens = await self.__create_tokens(
                 subject=str(existing_user.id),
                 is_ex=True,
                 user_claims={
@@ -214,14 +214,14 @@ class AuthService:
     async def refresh(self, refresh_token: str, user_agent: str) -> Tokens:
         # check token
         try:
-            self.Authorize._verify_jwt_in_request(
+            await self.Authorize._verify_jwt_in_request(
                 token=refresh_token,
                 type_token='refresh',
                 token_from='headers'
             )
 
             # check user
-            data_token = self.Authorize.get_raw_jwt(refresh_token)
+            data_token = await self.Authorize.get_raw_jwt(refresh_token)
             sub = data_token.get('sub')
             existing_user = await self.__check_user_exist_active(
                 by='user',
@@ -234,7 +234,7 @@ class AuthService:
             user_roles = await self.db_service.get_user_roles(
                 user_id=existing_user.id
             )
-            tokens = self.__create_tokens(
+            tokens = await self.__create_tokens(
                 subject=str(existing_user.id),
                 is_ex=True,
                 user_claims={

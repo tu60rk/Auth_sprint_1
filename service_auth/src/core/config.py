@@ -1,7 +1,6 @@
 import os
 from logging import config as logging_config
 from pydantic import BaseSettings
-from dotenv import load_dotenv
 
 from src.core.logger import LOGGING
 
