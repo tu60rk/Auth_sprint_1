@@ -15,3 +15,4 @@ python-multipart==0.0.6
 bcrypt==4.0.1
 passlib==1.7.4
 fastapi-jwt-auth[asymmetric]
+python-dotenv==1.0.0

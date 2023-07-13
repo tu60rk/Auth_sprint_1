@@ -1,5 +1,5 @@
 from http import HTTPStatus
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List
 
 from src.utils.oauth2 import get_current_user
@@ -31,7 +31,9 @@ async def read_users_me(current_user: UserInDB = Depends(get_current_user)):
 )
 async def get_account_history(
     current_user: UserInDB = Depends(get_current_user),
-    service_user: UserService = Depends(user_service)
+    service_user: UserService = Depends(user_service),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
 ) -> List[ShemaAccountHistory]:
     result = await service_user.get_account_history(current_user.id)
     if not result:
@@ -39,7 +41,12 @@ async def get_account_history(
             status_code=HTTPStatus.BAD_GATEWAY,
             detail="Can't get account history"
         )
-    return result
+
+    start_index = (page - 1) * page_size
+    end_index = start_index + page_size
+    paginated_result = result[start_index:end_index]
+
+    return paginated_result
 
 
 @router.put(
