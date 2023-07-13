@@ -56,8 +56,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix='/api/v1/auth')
-app.include_router(roles.router, prefix='/auth/v1/roles')
-app.include_router(users.router, prefix='/auth/v1/users')
+app.include_router(roles.router, prefix='/api/v1/roles')
+app.include_router(users.router, prefix='/api/v1/users')
 
 if __name__ == '__main__':
     uvicorn.run(
