@@ -2,7 +2,7 @@ from http import HTTPStatus
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
 
 from src.schemas.entity import (
-    UserCreate, UserInDB, LoginUserSchema, Tokens, Status
+    UserCreate, UserInDB, LoginUserSchema, Tokens, Status, RefreshToken
 )
 from src.services.auth import AuthService, auth_service
 from src.utils.oauth2 import get_current_user
@@ -88,13 +88,13 @@ async def login(
     tags=["Авторизация"],
 )
 async def refresh(
-    refresh_token: str,
+    refresh_token: RefreshToken,
     request: Request,
     service_auth: AuthService = Depends(auth_service)
 ) -> Tokens:
 
     result = await service_auth.refresh(
-        refresh_token=refresh_token,
+        refresh_token=refresh_token.refresh_token,
         user_agent=request.headers.get('user-agent')
     )
     if not result:
