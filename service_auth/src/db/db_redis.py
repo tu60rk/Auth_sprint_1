@@ -4,6 +4,7 @@ from datetime import timedelta
 from typing import Optional
 from redis.asyncio import Redis
 from src.core.config import settings
+from .abstracts import AsyncCacheService
 
 redis: Optional[Redis] = None
 
@@ -14,7 +15,7 @@ async def get_redis() -> Optional[Redis]:
     return redis
 
 
-class RedisService:
+class RedisService(AsyncCacheService):
     def __init__(self, redis: Redis) -> None:
         self.redis = redis
 

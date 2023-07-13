@@ -4,7 +4,7 @@ from sqlalchemy.sql import select, update, insert, delete
 
 from src.models.entity import RefreshToken, Role, UserRoles
 from src.core.config import settings
-
+from .abstracts import AsyncDbService
 # Создаём движок
 # Настройки подключения к БД передаём из переменных окружения, которые заранее загружены в файл настроек
 engine = create_async_engine(
@@ -21,7 +21,7 @@ async def get_session() -> AsyncSession:
         yield session
 
 
-class DbService:
+class DbService(AsyncDbService):
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
