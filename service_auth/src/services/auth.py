@@ -1,4 +1,5 @@
 import json
+import logging
 
 from functools import lru_cache
 from typing import Optional
@@ -19,9 +20,13 @@ from src.models.entity import (
 )
 from src.core.config import settings
 from core.oauth2 import AuthJWT
+from .abstracts import AsyncAuthService
+
+logging.config.fileConfig('./src/core/logging.conf', disable_existing_loggers=False)
+logger = logging.getLogger(__name__)
 
 
-class AuthService:
+class AuthService(AsyncAuthService):
     def __init__(
         self,
         db_service: DbService,
@@ -39,6 +44,11 @@ class AuthService:
         user_claims: dict = {},
     ) -> Tokens:
 
+        logger.info(f"""Start to create tokens. Params:
+        subject - {subject},
+        is_ex - {is_ex},
+        user_claims - {user_claims}
+        """)
         params_for_access = {
             'subject': subject,
             'user_claims': user_claims
@@ -71,9 +81,11 @@ class AuthService:
         refresh_token = await self.Authorize.create_refresh_token(
             **params_for_access
         )
+        logger.info(msg="Finish to create tokens")
         return Tokens(access_token=access_token, refresh_token=refresh_token)
 
     async def __create_roles(self) -> None:
+        logger.info(msg="Start to create default roles. No params.")
         user_role = Role(
             name='user',
             description='user'
@@ -85,12 +97,15 @@ class AuthService:
 
         await self.db_service.insert_data(user_role)
         await self.db_service.insert_data(admin_role)
+        logger.info(msg="Finish to create default roles")
 
     async def __check_user_exist_active(
         self,
         by: str,
         data: str
     ) -> Optional[HTTPStatus]:
+        logger.info(f"""Start to check user exist.
+        Params: by - {by}, data - {data}""")
         where_list = []
         if by == 'email':
             where_list = [User.email, data]
@@ -104,10 +119,13 @@ class AuthService:
             return HTTPStatus.CONFLICT
         if not existing_user[0].is_active:
             return HTTPStatus.BAD_REQUEST
+
+        logger.info(msg="Finish to check user exist")
         return existing_user[0]
 
     async def create_user(self, user_info: UserInDB) -> Optional[UserInDB]:
-        try:
+            logger.info(f'Start to create user. Params: user_info - {user_info}')
+        # try:
             user_dto = jsonable_encoder(user_info)
             user_dto['password'] = settings.SAULT + user_dto['email'] + user_dto['password']
             user = User(**user_dto)
@@ -129,6 +147,7 @@ class AuthService:
                 where_select=[User.email, user.email]
             )
             if len(existing_user) > 0:
+                logger.info(msg="Couldn't create user because of email exist.")
                 return HTTPStatus.CONFLICT
 
             user.verified = True
@@ -140,9 +159,11 @@ class AuthService:
                     'role_id': roles[0]
                 }
             )
+            logger.info(msg="Finish to create user")
             return user
-        except Exception:
-            return None
+        # except Exception as err:
+        #     logger.error(msg=f"Couldn't create user. Error - {err}")
+        #     return None
 
     async def login(
         self,
@@ -151,14 +172,20 @@ class AuthService:
         passwd: str,
         set_cookie: bool,
         response: Response
-    ):
-
+    ) -> Tokens:
         try:
+            logger.info(f"""Start User login. Params:
+            user_agent - {user_agent},
+            email - {email},
+            set_cookie - {set_cookie},
+            response - {response}
+            """)
             existing_user = await self.__check_user_exist_active(
                 by='email',
                 data=email
             )
             if existing_user in [HTTPStatus.CONFLICT, HTTPStatus.BAD_REQUEST]:
+                logger.info(msg="User didn't go a checking")
                 return existing_user
 
             password_match = check_password_hash(
@@ -167,6 +194,7 @@ class AuthService:
             )
 
             if not password_match:
+                logger.info(msg="Password didn't match")
                 return HTTPStatus.UNAUTHORIZED
 
             user_roles = await self.db_service.get_user_roles(
@@ -207,13 +235,16 @@ class AuthService:
             if set_cookie:
                 response.set_cookie('access_token', tokens.access_token, settings.ACCESS_TOKEN_EXPIRES_IN, settings.ACCESS_TOKEN_EXPIRES_IN, '/', None, False, True, 'lax')
                 response.set_cookie('refresh_token', tokens.refresh_token, settings.REFRESH_TOKEN_EXPIRES_IN, settings.REFRESH_TOKEN_EXPIRES_IN, '/', None, False, True, 'lax')
-        except Exception:
+            logger.info(msg="Finish User login")
+        except Exception as err:
+            logger.error(msg=f"User can't login. Err - {err}")
             return None
         return tokens
 
     async def refresh(self, refresh_token: str, user_agent: str) -> Tokens:
         # check token
         try:
+            logger.info(msg="Start to refresh tokens")
             await self.Authorize._verify_jwt_in_request(
                 token=refresh_token,
                 type_token='refresh',
@@ -263,25 +294,33 @@ class AuthService:
                 is_active=True
             )
             await self.db_service.insert_data(data_refresh_token)
-        except Exception:
+            logger.info(msg="Finish to refresh tokens")
+        except Exception as err:
+            logger.error(msg=f"Couldn't refresh tokens. Err - {err}")
             return None
         return tokens
 
     async def logout_all(self, user_id: str) -> Status:
         try:
+            logger.info(f"Start to logout all. Params: user_id - {user_id}")
             await self.redis_service.delete(user_id)
             await self.db_service.simple_update(
                 what_update=RefreshToken,
                 where_update=[RefreshToken.user_id, user_id],
                 values_update={'is_active': false()}
             )
-        except Exception:
+            logger.info(msg="Finish to logout all")
+        except Exception as err:
+            logger.error(msg=f"Couldn't logout all. Err - {err}")
             return None
         return Status(status='success')
 
     async def logout_me(self, user_id: str, user_agent: str) -> Status:
-
         try:
+            logger.info(f"""Start to logout me. Params:
+            user_id - {user_id},
+            user_agent - {user_agent}
+            """)
             current_user_tokens = await self.redis_service.get(user_id)
             current_user_tokens.pop(user_agent)
 
@@ -302,8 +341,9 @@ class AuthService:
                 },
                 values_update={'is_active': false()}
             )
-
-        except Exception:
+            logger.info(msg="Finish to logout me")
+        except Exception as err:
+            logger.error(msg=f"Couldn't logout me. Err - {err}")
             return None
 
         return Status(status='success')

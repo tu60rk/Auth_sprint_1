@@ -1,4 +1,5 @@
 import uuid
+import logging
 
 from functools import lru_cache
 from typing import List, Optional
@@ -12,9 +13,13 @@ from src.db.postgres import get_session, DbService
 from src.schemas.entity import ShemaAccountHistory, Status, UserInDB
 from src.models.entity import AccountHistory, User
 from src.core.config import settings
+from .abstracts import AsyncUsersService
+
+logging.config.fileConfig('./src/core/logging.conf', disable_existing_loggers=False)
+logger = logging.getLogger(__name__)
 
 
-class UserService:
+class UserService(AsyncUsersService):
     def __init__(self, db_service: DbService) -> None:
         self.db_service = db_service
 
@@ -22,13 +27,15 @@ class UserService:
         self,
         user_id: uuid
     ) -> Optional[List[ShemaAccountHistory]]:
-
         try:
+            logger.info(f"""Start to get account history. Params:
+            user_id - {user_id}""")
             account_history = await self.db_service.simple_select(
                 what_select=AccountHistory,
                 where_select=[AccountHistory.user_id, user_id],
                 order_select=AccountHistory.created_at.desc
             )
+            logger.info("Finish to get account history")
             return [
                 ShemaAccountHistory(
                     user_agent=login.user_agent,
@@ -36,7 +43,8 @@ class UserService:
                 )
                 for login in account_history
             ]
-        except Exception:
+        except Exception as err:
+            logger.error(f"Couldn't to get account history, Err - {err}")
             return None
 
     async def change_password(
@@ -46,6 +54,7 @@ class UserService:
         user_info: UserInDB
     ) -> Status:
         try:
+            logger.info("Start to change password")
             user = await self.db_service.simple_select(
                 what_select=User,
                 where_select=[User.email, user_info.email]
@@ -64,8 +73,10 @@ class UserService:
                 password=settings.SAULT + user.email + password
             )
             await self.db_service.db.commit()
+            logger.info("End to change password")
             return Status(status='success')
-        except Exception:
+        except Exception as err:
+            logger.error(f"Couldn't to change password, Err - {err}")
             return None
         # add condition when user want to out of all his gadgets.
 
@@ -76,7 +87,7 @@ class UserService:
         user_info: UserInDB
     ) -> Status:
         try:
-
+            logger.info("Start to change email")
             # check new_email in db
             check_email = await self.db_service.simple_select(
                 what_select=User,
@@ -103,8 +114,10 @@ class UserService:
                 password=settings.SAULT + new_email + current_password
             )
             await self.db_service.db.commit()
+            logger.info("Finish to change email")
             return Status(status='success')
-        except Exception:
+        except Exception as err:
+            logger.error(f"Couldn't to change email. Err - {err}")
             return None
 
 
